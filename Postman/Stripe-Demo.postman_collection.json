@@ -1,0 +1,543 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-stripe-demo-001",
+    "name": "Stripe Demo (NestJS)",
+    "description": "NestJS + PostgreSQL Stripe demo collection.\n\n**Setup**\n1. Import this collection + the Stripe Demo Local environment.\n2. Start API: `npm run start:dev`\n3. Run migrations + seed first.\n4. Walk folders top → bottom; tests auto-save `userId`, `priceId`, `subscriptionPriceId`, etc.\n\nBase URL: `{{baseUrl}}` → `http://localhost:3000/api`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api" },
+    { "key": "userId", "value": "" },
+    { "key": "priceId", "value": "" },
+    { "key": "subscriptionPriceId", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "subscriptionId", "value": "" },
+    { "key": "checkoutUrl", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Liveness probe."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Users",
+      "item": [
+        {
+          "name": "List users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const users = pm.response.json();",
+                  "  if (Array.isArray(users) && users.length) {",
+                  "    pm.collectionVariables.set('userId', users[0].id);",
+                  "    pm.environment.set('userId', users[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users",
+            "description": "Lists users. Saves first user id into `userId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get user by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/users/{{userId}}",
+            "description": "Requires `userId` from list/create."
+          },
+          "response": []
+        },
+        {
+          "name": "Create user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const user = pm.response.json();",
+                  "  if (user.id) {",
+                  "    pm.collectionVariables.set('userId', user.id);",
+                  "    pm.environment.set('userId', user.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"alice@example.com\",\n  \"fullName\": \"Alice Demo\"\n}"
+            },
+            "url": "{{baseUrl}}/users",
+            "description": "Creates a local user + Stripe Customer. Saves `userId`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Products",
+      "item": [
+        {
+          "name": "List products",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const products = pm.response.json();",
+                  "  if (!Array.isArray(products)) return;",
+                  "  for (const p of products) {",
+                  "    if (!p.prices || !p.prices.length) continue;",
+                  "    const oneTime = p.prices.find(x => x.type === 'one_time' && x.isActive);",
+                  "    const recurring = p.prices.find(x => x.type === 'recurring' && x.isActive);",
+                  "    if (oneTime) {",
+                  "      pm.collectionVariables.set('priceId', oneTime.id);",
+                  "      pm.environment.set('priceId', oneTime.id);",
+                  "      pm.collectionVariables.set('productId', p.id);",
+                  "      pm.environment.set('productId', p.id);",
+                  "    }",
+                  "    if (recurring) {",
+                  "      pm.collectionVariables.set('subscriptionPriceId', recurring.id);",
+                  "      pm.environment.set('subscriptionPriceId', recurring.id);",
+                  "    }",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/products",
+            "description": "Lists products. Saves one-time `priceId` and recurring `subscriptionPriceId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get product by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/products/{{productId}}",
+            "description": "Requires `productId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create one-time product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const product = pm.response.json();",
+                  "  if (product.id) {",
+                  "    pm.collectionVariables.set('productId', product.id);",
+                  "    pm.environment.set('productId', product.id);",
+                  "  }",
+                  "  if (product.prices && product.prices[0]) {",
+                  "    pm.collectionVariables.set('priceId', product.prices[0].id);",
+                  "    pm.environment.set('priceId', product.prices[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Demo T-Shirt\",\n  \"description\": \"One-time merch purchase\",\n  \"amount\": 2500,\n  \"currency\": \"usd\",\n  \"type\": \"one_time\",\n  \"syncToStripe\": true\n}"
+            },
+            "url": "{{baseUrl}}/products",
+            "description": "Creates product + one-time price (amount in cents). Syncs to Stripe when key is set."
+          },
+          "response": []
+        },
+        {
+          "name": "Create subscription product",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const product = pm.response.json();",
+                  "  if (product.prices && product.prices[0]) {",
+                  "    pm.collectionVariables.set('subscriptionPriceId', product.prices[0].id);",
+                  "    pm.environment.set('subscriptionPriceId', product.prices[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Team Plan\",\n  \"description\": \"Monthly subscription\",\n  \"amount\": 2900,\n  \"currency\": \"usd\",\n  \"type\": \"recurring\",\n  \"interval\": \"month\",\n  \"syncToStripe\": true\n}"
+            },
+            "url": "{{baseUrl}}/products",
+            "description": "Creates recurring product/price. Saves `subscriptionPriceId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add price to product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"amount\": 4999,\n  \"currency\": \"usd\",\n  \"type\": \"one_time\"\n}"
+            },
+            "url": "{{baseUrl}}/products/prices",
+            "description": "Adds another price to an existing product."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Payments",
+      "item": [
+        {
+          "name": "Create Checkout Session (one-time)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.orderId) {",
+                  "    pm.collectionVariables.set('orderId', body.orderId);",
+                  "    pm.environment.set('orderId', body.orderId);",
+                  "  }",
+                  "  if (body.url) {",
+                  "    pm.collectionVariables.set('checkoutUrl', body.url);",
+                  "    pm.environment.set('checkoutUrl', body.url);",
+                  "    console.log('Open Checkout URL:', body.url);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"priceId\": \"{{priceId}}\",\n  \"quantity\": 1,\n  \"mode\": \"payment\"\n}"
+            },
+            "url": "{{baseUrl}}/payments/checkout-session",
+            "description": "Creates Stripe Checkout for one-time payment.\n\nOpen `checkoutUrl` from the response (or Tests console). Pay with test card `4242 4242 4242 4242`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Checkout Session (subscription)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.orderId) {",
+                  "    pm.collectionVariables.set('orderId', body.orderId);",
+                  "    pm.environment.set('orderId', body.orderId);",
+                  "  }",
+                  "  if (body.url) {",
+                  "    pm.collectionVariables.set('checkoutUrl', body.url);",
+                  "    pm.environment.set('checkoutUrl', body.url);",
+                  "    console.log('Open Checkout URL:', body.url);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"priceId\": \"{{subscriptionPriceId}}\",\n  \"quantity\": 1,\n  \"mode\": \"subscription\"\n}"
+            },
+            "url": "{{baseUrl}}/payments/checkout-session",
+            "description": "Creates Stripe Checkout in subscription mode using `subscriptionPriceId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create PaymentIntent",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"priceId\": \"{{priceId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/payments/payment-intent",
+            "description": "Returns `clientSecret` + `publishableKey` for Stripe Payment Element / custom UI."
+          },
+          "response": []
+        },
+        {
+          "name": "Create PaymentIntent (custom amount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"amount\": 1500,\n  \"currency\": \"usd\"\n}"
+            },
+            "url": "{{baseUrl}}/payments/payment-intent",
+            "description": "PaymentIntent with raw amount (cents), no catalog price."
+          },
+          "response": []
+        },
+        {
+          "name": "List orders",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const orders = pm.response.json();",
+                  "  if (Array.isArray(orders) && orders.length) {",
+                  "    pm.collectionVariables.set('orderId', orders[0].id);",
+                  "    pm.environment.set('orderId', orders[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/orders?userId={{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "orders"],
+              "query": [
+                {
+                  "key": "userId",
+                  "value": "{{userId}}",
+                  "description": "Optional filter"
+                }
+              ]
+            },
+            "description": "Lists orders for a user. Saves latest `orderId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get order by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/payments/orders/{{orderId}}",
+            "description": "Order detail / payment status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Subscriptions",
+      "item": [
+        {
+          "name": "List subscriptions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const subs = pm.response.json();",
+                  "  if (Array.isArray(subs) && subs.length) {",
+                  "    pm.collectionVariables.set('subscriptionId', subs[0].id);",
+                  "    pm.environment.set('subscriptionId', subs[0].id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions?userId={{userId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions"],
+              "query": [
+                { "key": "userId", "value": "{{userId}}" }
+              ]
+            },
+            "description": "Lists local subscription records (populated via webhooks after Checkout). Saves `subscriptionId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get subscription by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/subscriptions/{{subscriptionId}}",
+            "description": "Requires `subscriptionId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create billing portal session",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"returnUrl\": \"http://localhost:5173/account\"\n}"
+            },
+            "url": "{{baseUrl}}/subscriptions/billing-portal",
+            "description": "Returns Stripe Customer Portal URL. Enable portal in Stripe Dashboard → Settings → Billing → Customer portal."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel subscription (at period end)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/{{subscriptionId}}/cancel?atPeriodEnd=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "{{subscriptionId}}", "cancel"],
+              "query": [
+                {
+                  "key": "atPeriodEnd",
+                  "value": "true",
+                  "description": "true = cancel after current period; false = cancel immediately"
+                }
+              ]
+            },
+            "description": "Cancels subscription at period end by default."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel subscription (immediate)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/subscriptions/{{subscriptionId}}/cancel?atPeriodEnd=false",
+              "host": ["{{baseUrl}}"],
+              "path": ["subscriptions", "{{subscriptionId}}", "cancel"],
+              "query": [
+                { "key": "atPeriodEnd", "value": "false" }
+              ]
+            },
+            "description": "Cancels immediately in Stripe."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Webhooks (docs only)",
+      "item": [
+        {
+          "name": "Stripe webhook (use Stripe CLI)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "stripe-signature",
+                "value": "t=...,v1=...",
+                "description": "Generated by Stripe — do not invent this in Postman"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"evt_xxx\",\n  \"object\": \"event\",\n  \"type\": \"checkout.session.completed\",\n  \"data\": { \"object\": {} }\n}"
+            },
+            "url": "{{baseUrl}}/webhooks/stripe",
+            "description": "Do **not** call this from Postman for real testing — signature verification will fail.\n\nUse Stripe CLI instead:\n\n```\nstripe listen --forward-to localhost:3000/api/webhooks/stripe\n```\n\nThen trigger events with Checkout or:\n\n```\nstripe trigger payment_intent.succeeded\n```"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
