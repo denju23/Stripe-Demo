@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Stripe Demo — Socket client</title>
+    <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+    <style>
+      :root {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #14213d;
+        background: #f8f4ef;
+      }
+      body {
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      h1 {
+        font-size: 1.4rem;
+      }
+      label {
+        display: block;
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+      }
+      input,
+      button {
+        font: inherit;
+        padding: 0.45rem 0.6rem;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 0.75rem;
+        margin-right: 0.4rem;
+        cursor: pointer;
+      }
+      #log {
+        margin-top: 1rem;
+        background: #14213d;
+        color: #e5e5e5;
+        padding: 1rem;
+        min-height: 240px;
+        white-space: pre-wrap;
+        font-family: ui-monospace, Consolas, monospace;
+        font-size: 12px;
+        border-radius: 6px;
+      }
+      .ok {
+        color: #2a9d8f;
+      }
+      .err {
+        color: #e76f51;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Stripe Demo — Socket.IO client</h1>
+    <p>
+      1) Start API (<code>npm run start:dev</code>) · 2) Seed a user · 3) Connect
+      here · 4) Trigger checkout / webhook and watch events.
+    </p>
+
+    <label>API base (HTTP)</label>
+    <input id="apiBase" value="http://localhost:3000/api" />
+
+    <label>Socket URL (same host, no /api)</label>
+    <input id="socketUrl" value="http://localhost:3000" />
+
+    <label>User email (or leave blank and set userId)</label>
+    <input id="email" value="demo@stripe.dev" />
+
+    <label>User id (optional if email set)</label>
+    <input id="userId" placeholder="uuid" />
+
+    <button id="btnToken">Get JWT</button>
+    <button id="btnConnect">Connect socket</button>
+    <button id="btnPing">clientPing</button>
+    <button id="btnDisconnect">Disconnect</button>
+
+    <label>Access token</label>
+    <input id="token" readonly />
+
+    <div id="log"></div>
+
+    <script>
+      const logEl = document.getElementById("log");
+      let socket = null;
+
+      function log(msg, cls) {
+        const line = document.createElement("div");
+        if (cls) line.className = cls;
+        line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        logEl.prepend(line);
+      }
+
+      document.getElementById("btnToken").onclick = async () => {
+        const apiBase = document.getElementById("apiBase").value.replace(/\/$/, "");
+        const email = document.getElementById("email").value.trim();
+        const userId = document.getElementById("userId").value.trim();
+        const body = userId ? { userId } : { email };
+        try {
+          const res = await fetch(`${apiBase}/auth/socket-token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(JSON.stringify(data));
+          document.getElementById("token").value = data.accessToken;
+          document.getElementById("userId").value = data.user.id;
+          log(`JWT ok for ${data.user.email}`, "ok");
+        } catch (e) {
+          log(String(e), "err");
+        }
+      };
+
+      document.getElementById("btnConnect").onclick = () => {
+        const token = document.getElementById("token").value.trim();
+        if (!token) {
+          log("Get a JWT first", "err");
+          return;
+        }
+        if (socket) socket.disconnect();
+
+        const url = document.getElementById("socketUrl").value.trim();
+        socket = io(url, {
+          transports: ["websocket", "polling"],
+          auth: { authorization: token },
+        });
+
+        socket.on("connect", () => log(`connected ${socket.id}`, "ok"));
+        socket.on("disconnect", (r) => log(`disconnect: ${r}`));
+        socket.on("connect_error", (e) => log(`connect_error: ${e.message}`, "err"));
+
+        [
+          "orderStatusUpdated",
+          "paymentSucceeded",
+          "paymentFailed",
+          "subscriptionUpdated",
+          "socketError",
+          "clientPong",
+        ].forEach((ev) => {
+          socket.on(ev, (payload) =>
+            log(`${ev} ${JSON.stringify(payload)}`, ev === "socketError" ? "err" : "ok"),
+          );
+        });
+
+        setInterval(() => {
+          if (socket?.connected) socket.emit("heartbeat", { note: "ui" });
+        }, 60000);
+      };
+
+      document.getElementById("btnPing").onclick = () => {
+        if (!socket?.connected) return log("not connected", "err");
+        socket.emit("clientPing", { message: "hello from browser" });
+      };
+
+      document.getElementById("btnDisconnect").onclick = () => {
+        socket?.disconnect();
+        socket = null;
+        log("disconnected by user");
+      };
+    </script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Stripe from 'stripe';
@@ -9,14 +9,18 @@ import {
 import { UsersService } from '../users/users.service';
 import { StripeService } from '../stripe/stripe.service';
 import { CreateBillingPortalDto } from './dto/subscription.dto';
+import { SocketEmitService } from '../socket/socket-emit.service';
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   constructor(
     @InjectRepository(Subscription)
     private readonly subsRepo: Repository<Subscription>,
     private readonly usersService: UsersService,
     private readonly stripeService: StripeService,
+    private readonly socketEmit: SocketEmitService,
   ) {}
 
   async list(userId?: string): Promise<Subscription[]> {
@@ -73,10 +77,16 @@ export class SubscriptionsService {
 
     if (existing) {
       Object.assign(existing, payload);
-      return this.subsRepo.save(existing);
+      const saved = await this.subsRepo.save(existing);
+      this.safeEmit(() => this.socketEmit.emitSubscriptionUpdated(userId, saved));
+      return saved;
     }
 
-    return this.subsRepo.save(this.subsRepo.create(payload));
+    const created = await this.subsRepo.save(this.subsRepo.create(payload));
+    this.safeEmit(() =>
+      this.socketEmit.emitSubscriptionUpdated(userId, created),
+    );
+    return created;
   }
 
   async cancel(id: string, cancelAtPeriodEnd = true): Promise<Subscription> {
@@ -91,7 +101,11 @@ export class SubscriptionsService {
       );
       sub.status = 'canceled';
       sub.cancelAtPeriodEnd = false;
-      return this.subsRepo.save(sub);
+      const saved = await this.subsRepo.save(sub);
+      this.safeEmit(() =>
+        this.socketEmit.emitSubscriptionUpdated(saved.userId, saved),
+      );
+      return saved;
     }
     return this.upsertFromStripe(updated, {
       userId: sub.userId,
@@ -110,5 +124,15 @@ export class SubscriptionsService {
       },
     );
     return { url: session.url };
+  }
+
+  private safeEmit(fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      this.logger.warn(
+        `Socket emit skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

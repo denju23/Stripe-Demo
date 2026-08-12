@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -13,14 +14,18 @@ import {
 import { UsersService } from '../users/users.service';
 import { ProductsService } from '../products/products.service';
 import { StripeService } from '../stripe/stripe.service';
+import { SocketEmitService } from '../socket/socket-emit.service';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     @InjectRepository(Order) private readonly ordersRepo: Repository<Order>,
     private readonly usersService: UsersService,
     private readonly productsService: ProductsService,
     private readonly stripeService: StripeService,
+    private readonly socketEmit: SocketEmitService,
   ) {}
 
   async listOrders(userId?: string): Promise<Order[]> {
@@ -102,6 +107,11 @@ export class PaymentsService {
     savedOrder.stripeCheckoutSessionId = session.id;
     await this.ordersRepo.save(savedOrder);
 
+    // Push: checkout created (requires_payment) — same pattern as order controller emit
+    this.safeEmit(() => {
+      if (user.id) this.socketEmit.emitOrderStatus(user.id, savedOrder);
+    });
+
     return {
       orderId: savedOrder.id,
       sessionId: session.id,
@@ -159,6 +169,10 @@ export class PaymentsService {
     order.stripePaymentIntentId = intent.id;
     await this.ordersRepo.save(order);
 
+    this.safeEmit(() => {
+      if (user.id) this.socketEmit.emitOrderStatus(user.id, order);
+    });
+
     return {
       orderId: order.id,
       clientSecret: intent.client_secret,
@@ -189,7 +203,15 @@ export class PaymentsService {
     if (params.paymentIntentId) {
       order.stripePaymentIntentId = params.paymentIntentId;
     }
-    return this.ordersRepo.save(order);
+    const saved = await this.ordersRepo.save(order);
+
+    if (saved.userId) {
+      this.safeEmit(() =>
+        this.socketEmit.emitPaymentSucceeded(saved.userId!, saved),
+      );
+    }
+
+    return saved;
   }
 
   async markOrderFailed(paymentIntentId: string): Promise<void> {
@@ -198,6 +220,23 @@ export class PaymentsService {
     });
     if (!order) return;
     order.status = 'failed';
-    await this.ordersRepo.save(order);
+    const saved = await this.ordersRepo.save(order);
+
+    if (saved.userId) {
+      this.safeEmit(() =>
+        this.socketEmit.emitPaymentFailed(saved.userId!, saved),
+      );
+    }
+  }
+
+  /** Socket failures must never fail the HTTP/webhook path */
+  private safeEmit(fn: () => void): void {
+    try {
+      fn();
+    } catch (err) {
+      this.logger.warn(
+        `Socket emit skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }

@@ -26,6 +26,7 @@ async function bootstrap() {
   const port = config.get<number>('PORT', 3000);
   await app.listen(port);
   console.log(`Stripe demo API running on http://localhost:${port}/api`);
+  console.log(`Socket.IO on same server (JWT via /api/auth/socket-token)`);
 }
 
 bootstrap();

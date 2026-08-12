@@ -8,6 +8,7 @@
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000/api" },
     { "key": "userId", "value": "" },
+    { "key": "accessToken", "value": "" },
     { "key": "priceId", "value": "" },
     { "key": "subscriptionPriceId", "value": "" },
     { "key": "productId", "value": "" },
@@ -16,6 +17,109 @@
     { "key": "checkoutUrl", "value": "" }
   ],
   "item": [
+    {
+      "name": "0. Auth (Socket JWT)",
+      "item": [
+        {
+          "name": "Issue socket token (by userId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.accessToken) {",
+                  "    pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "    pm.environment.set('accessToken', body.accessToken);",
+                  "  }",
+                  "  if (body.user && body.user.id) {",
+                  "    pm.collectionVariables.set('userId', body.user.id);",
+                  "    pm.environment.set('userId', body.user.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/socket-token",
+            "description": "Mint JWT for Socket.IO handshake. Use in examples/socket-client.html auth.authorization."
+          },
+          "response": []
+        },
+        {
+          "name": "Issue socket token (by email)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.accessToken) {",
+                  "    pm.collectionVariables.set('accessToken', body.accessToken);",
+                  "    pm.environment.set('accessToken', body.accessToken);",
+                  "  }",
+                  "  if (body.user && body.user.id) {",
+                  "    pm.collectionVariables.set('userId', body.user.id);",
+                  "    pm.environment.set('userId', body.user.id);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"demo@stripe.dev\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/socket-token",
+            "description": "Mint JWT using seeded demo email."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "0b. Socket debug",
+      "item": [
+        {
+          "name": "List socket events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/socket/events"
+          },
+          "response": []
+        },
+        {
+          "name": "List online socket users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/socket/online",
+            "description": "Presence snapshot after connecting examples/socket-client.html"
+          },
+          "response": []
+        }
+      ]
+    },
     {
       "name": "1. Health",
       "item": [
